@@ -22,8 +22,6 @@ use crossterm::terminal::{
 use tui::Terminal;
 use tui::backend::CrosstermBackend;
 use tui::layout::{Constraint, Direction, Layout};
-use tui::style::{Color, Modifier, Style};
-use tui::widgets::{Block, Borders};
 
 pub struct App {
   terminal: Terminal<CrosstermBackend<io::Stdout>>,
@@ -43,7 +41,7 @@ impl App {
       terminal,
       state: Arc::new(Mutex::new(State{
         current_y: 1,
-        current_x: 1,
+        // current_x: 1,
         player: Player::new(),
       })),
     })
@@ -63,8 +61,7 @@ impl App {
             // Constraint::Percentage(10)
           ].as_ref())
           .split(f.size());
-
-        f.render_widget(state.player.draw(), chunks[0]);
+        state.player.draw(f, chunks[0]);
       })?;
 
       match event::read()? {
@@ -75,7 +72,7 @@ impl App {
               'j' => { state.current_y += 1; }
               'k' => { state.current_y -= 1; }
               '-' => { state.player.decrease_volume(); }
-              '+' => { state.player.increase_volume(); }
+              '=' => { state.player.increase_volume(); }
               _ => {}
             }
           }
@@ -101,7 +98,7 @@ impl Drop for App {
 }
 
 struct State {
-  pub current_x: u8,
+  // pub current_x: u8,
   pub current_y: u8,
   pub player:    Player,
 }

@@ -5,7 +5,11 @@ use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
-use tui::widgets::{Block, Borders};
+use tui::backend::Backend;
+use tui::layout::Rect;
+use tui::terminal::Frame;
+use tui::text::{Span, Spans};
+use tui::widgets::{Block, Borders, Paragraph};
 use vlc::{
   Instance,
   Media,
@@ -45,6 +49,8 @@ impl Player {
       });
       mdp.set_media(&md);
       mdp.play().unwrap();
+      thread::sleep(std::time::Duration::from_millis(200));
+      mdp.set_volume(100).unwrap();
       loop {
         if let Ok(_) = end_rx.try_recv() {
           break;
@@ -53,7 +59,6 @@ impl Player {
           command.run(&mdp);
         }
         thread::sleep(std::time::Duration::from_millis(200));
-        mdp.set_volume(100).unwrap();
       }
     });
 
@@ -75,10 +80,14 @@ impl Player {
 }
 
 impl AppWidget for Player {
-  fn draw(&self) -> Block {
-    Block::default()
+  fn draw<T: Backend>(&self, f: &mut Frame<T>, area: Rect) {
+    let block = Block::default()
       .borders(Borders::ALL)
-      .title("player")
+      .title("player");
+    let text = format!("{}%", self.volume);
+    let widget = Paragraph::new(vec![Spans::from(vec![Span::raw(text)])])
+        .block(block);
+    f.render_widget(widget, area);
   }
 }
 

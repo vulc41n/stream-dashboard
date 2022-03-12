@@ -1,5 +1,8 @@
-use tui::widgets::Block;
+use tui::backend::Backend;
+use tui::layout::Rect;
+use tui::terminal::Frame;
 
 pub trait AppWidget {
-  fn draw(&self) -> Block;
+  fn draw<T: Backend>(&self, f: &mut Frame<T>, area: Rect);
 }
+
