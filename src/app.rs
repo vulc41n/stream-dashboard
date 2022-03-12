@@ -1,3 +1,4 @@
+use crate::AppWidget;
 use crate::player::Player;
 
 use std::io;
@@ -43,12 +44,12 @@ impl App {
       state: Arc::new(Mutex::new(State{
         current_y: 1,
         current_x: 1,
+        player: Player::new(),
       })),
     })
   }
 
   pub fn run(&mut self) -> Result<(), io::Error> {
-    Player::new();
     loop {
       let mut state = self.state.lock().unwrap();
       self.terminal.draw(|f| {
@@ -56,33 +57,14 @@ impl App {
           .direction(Direction::Vertical)
           .margin(1)
           .constraints([
-            Constraint::Percentage(10),
-            Constraint::Percentage(80),
-            Constraint::Percentage(10)
+            Constraint::Percentage(100),
+            // Constraint::Percentage(10),
+            // Constraint::Percentage(80),
+            // Constraint::Percentage(10)
           ].as_ref())
           .split(f.size());
 
-        let mut block1 = Block::default()
-          .borders(Borders::ALL);
-        if state.current_y == 1 {
-          block1 = block1.border_style(
-            Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-          );
-        }
-        f.render_widget(block1, chunks[0]);
-        let mut block2 = Block::default()
-          .title("Block 2")
-          .borders(Borders::ALL);
-        if state.current_y == 2 {
-          block2 = block2.border_style(
-            Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-          );
-        }
-        f.render_widget(block2, chunks[1]);
+        f.render_widget(state.player.draw(), chunks[0]);
       })?;
 
       match event::read()? {
@@ -92,6 +74,8 @@ impl App {
               'q' => { break }
               'j' => { state.current_y += 1; }
               'k' => { state.current_y -= 1; }
+              '-' => { state.player.decrease_volume(); }
+              '+' => { state.player.increase_volume(); }
               _ => {}
             }
           }
@@ -119,5 +103,6 @@ impl Drop for App {
 struct State {
   pub current_x: u8,
   pub current_y: u8,
+  pub player:    Player,
 }
 

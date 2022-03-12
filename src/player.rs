@@ -1,27 +1,98 @@
+use crate::AppWidget;
+
+use std::cmp::{max, min};
+use std::sync::Arc;
+use std::sync::mpsc::{channel, Sender};
 use std::thread;
-use vlc::{Instance, Media, MediaPlayer};
+
+use tui::widgets::{Block, Borders};
+use vlc::{
+  Instance,
+  Media,
+  MediaPlayer,
+  MediaPlayerAudioEx,
+  Event,
+  EventType,
+  State,
+};
 
 pub struct Player {
+  tx:     Sender<Arc<dyn Command>>,
+  volume: i32,
 }
 
 impl Player {
   pub fn new() -> Self {
-    // Start playing
-    thread::spawn(|| {
-      // Create an instance
+    let (tx, commands_rx) = channel::<Arc<dyn Command>>();
+    thread::spawn(move || {
       let instance = Instance::new().unwrap();
-      // Create a media from a file
       let mut filepath = home::home_dir().unwrap();
       filepath.push("music");
       filepath.push("output.ogg");
       let md = Media::new_path(&instance, filepath).unwrap();
-      // Create a media player
       let mdp = MediaPlayer::new(&instance).unwrap();
+      let (tx, end_rx) = channel::<()>();
+      let em = md.event_manager();
+      let _ = em.attach(EventType::MediaStateChanged, move |e, _| {
+        match e {
+          Event::MediaStateChanged(s) => {
+            if s == State::Ended || s == State::Error {
+              tx.send(()).unwrap();
+            }
+          },
+          _ => (),
+        }
+      });
       mdp.set_media(&md);
       mdp.play().unwrap();
-      thread::sleep(std::time::Duration::from_secs(10));
+      loop {
+        if let Ok(_) = end_rx.try_recv() {
+          break;
+        }
+        if let Ok(command) = commands_rx.try_recv() {
+          command.run(&mdp);
+        }
+        thread::sleep(std::time::Duration::from_millis(200));
+        mdp.set_volume(100).unwrap();
+      }
     });
 
-    Self{}
+    Self{
+      tx,
+      volume: 100,
+    }
+  }
+
+  pub fn increase_volume(&mut self) {
+    self.volume = min(self.volume + 5, 150);
+    self.tx.send(Arc::new(Volume(self.volume))).unwrap();
+  }
+
+  pub fn decrease_volume(&mut self) {
+    self.volume = max(self.volume - 5, 0);
+    self.tx.send(Arc::new(Volume(self.volume))).unwrap();
   }
 }
+
+impl AppWidget for Player {
+  fn draw(&self) -> Block {
+    Block::default()
+      .borders(Borders::ALL)
+      .title("player")
+  }
+}
+
+pub trait Command: Send + Sync {
+  fn run(&self, mdp: &MediaPlayer);
+}
+
+pub struct Volume(i32);
+
+impl Command for Volume {
+  fn run(&self, mdp: &MediaPlayer) {
+    mdp.set_volume(self.0).unwrap(); // TODO: print errors
+  }
+}
+
+unsafe impl Send for Volume {}
+unsafe impl Sync for Volume {}
