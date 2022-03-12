@@ -2,6 +2,7 @@ use std::io;
 
 mod app;
 use app::App;
+mod player;
 mod status;
 
 fn main() -> Result<(), io::Error> {

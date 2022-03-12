@@ -1,3 +1,5 @@
+use crate::player::Player;
+
 use std::io;
 use std::sync::{Arc, Mutex};
 
@@ -39,12 +41,14 @@ impl App {
     Ok(Self{
       terminal,
       state: Arc::new(Mutex::new(State{
-        current: 1,
+        current_y: 1,
+        current_x: 1,
       })),
     })
   }
 
   pub fn run(&mut self) -> Result<(), io::Error> {
+    Player::new();
     loop {
       let mut state = self.state.lock().unwrap();
       self.terminal.draw(|f| {
@@ -60,7 +64,7 @@ impl App {
 
         let mut block1 = Block::default()
           .borders(Borders::ALL);
-        if state.current == 1 {
+        if state.current_y == 1 {
           block1 = block1.border_style(
             Style::default()
             .fg(Color::Green)
@@ -71,7 +75,7 @@ impl App {
         let mut block2 = Block::default()
           .title("Block 2")
           .borders(Borders::ALL);
-        if state.current == 2 {
+        if state.current_y == 2 {
           block2 = block2.border_style(
             Style::default()
             .fg(Color::Green)
@@ -86,8 +90,8 @@ impl App {
           if let KeyCode::Char(c) = event.code {
             match c {
               'q' => { break }
-              'j' => { state.current += 1; }
-              'k' => { state.current -= 1; }
+              'j' => { state.current_y += 1; }
+              'k' => { state.current_y -= 1; }
               _ => {}
             }
           }
@@ -113,6 +117,7 @@ impl Drop for App {
 }
 
 struct State {
-  pub current: u8,
+  pub current_x: u8,
+  pub current_y: u8,
 }
 
