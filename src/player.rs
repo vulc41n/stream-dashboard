@@ -1,80 +1,69 @@
 use crate::AppWidget;
 
-use std::cmp::{max, min};
+use std::fs::File;
+use std::io::BufReader;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
+use rand::thread_rng;
+use rand::seq::SliceRandom;
+use rodio::{OutputStream, Sink};
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::terminal::Frame;
 use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, Paragraph};
-use vlc::{
-  Instance,
-  Media,
-  MediaPlayer,
-  MediaPlayerAudioEx,
-  Event,
-  EventType,
-  State,
-};
 
 pub struct Player {
   tx:     Sender<Arc<dyn Command>>,
-  volume: i32,
+  volume: f32,
+  stream: OutputStream,
 }
 
 impl Player {
   pub fn new() -> Self {
+    let (stream, stream_handle) = OutputStream::try_default().unwrap();
+    let mut playlist = Vec::new();
+    let mut dirpath = home::home_dir().unwrap();
+    dirpath.push("music");
+    for file in dirpath.read_dir().unwrap() {
+      if let Ok(file) = file {
+        if file.path().extension().unwrap() == "mp3" {
+          playlist.push(file.path());
+        }
+      }
+    }
+    playlist.shuffle(&mut thread_rng());
+
     let (tx, commands_rx) = channel::<Arc<dyn Command>>();
     thread::spawn(move || {
-      let instance = Instance::new().unwrap();
-      let mut filepath = home::home_dir().unwrap();
-      filepath.push("music");
-      filepath.push("output.ogg");
-      let md = Media::new_path(&instance, filepath).unwrap();
-      let mdp = MediaPlayer::new(&instance).unwrap();
-      let (tx, end_rx) = channel::<()>();
-      let em = md.event_manager();
-      let _ = em.attach(EventType::MediaStateChanged, move |e, _| {
-        match e {
-          Event::MediaStateChanged(s) => {
-            if s == State::Ended || s == State::Error {
-              tx.send(()).unwrap();
-            }
-          },
-          _ => (),
-        }
-      });
-      mdp.set_media(&md);
-      mdp.play().unwrap();
-      thread::sleep(std::time::Duration::from_millis(200));
-      mdp.set_volume(100).unwrap();
+      let mut current = 0;
       loop {
-        if let Ok(_) = end_rx.try_recv() {
-          break;
+        let file = &playlist[current];
+        let br = BufReader::new(File::open(file).unwrap());
+        let sink = stream_handle.play_once(br).unwrap();
+        loop {
+          commands_rx.recv().unwrap().run(&sink);
         }
-        if let Ok(command) = commands_rx.try_recv() {
-          command.run(&mdp);
-        }
-        thread::sleep(std::time::Duration::from_millis(200));
       }
     });
 
     Self{
-      tx,
-      volume: 100,
+      tx, stream,
+      volume: 1.0,
     }
   }
 
   pub fn increase_volume(&mut self) {
-    self.volume = min(self.volume + 5, 150);
+    let new_volume = self.volume + 0.05;
+    self.volume = if new_volume > 1.0 { 1.0 } else { new_volume };
     self.tx.send(Arc::new(Volume(self.volume))).unwrap();
   }
 
   pub fn decrease_volume(&mut self) {
-    self.volume = max(self.volume - 5, 0);
+    let new_volume = self.volume - 0.05;
+    self.volume = if new_volume < 0.0 { 0.0 } else { new_volume };
     self.tx.send(Arc::new(Volume(self.volume))).unwrap();
   }
 }
@@ -84,7 +73,7 @@ impl AppWidget for Player {
     let block = Block::default()
       .borders(Borders::ALL)
       .title("player");
-    let text = format!("{}%", self.volume);
+    let text = format!("{}%", (self.volume*100.0).round() as u8);
     let widget = Paragraph::new(vec![Spans::from(vec![Span::raw(text)])])
         .block(block);
     f.render_widget(widget, area);
@@ -92,14 +81,14 @@ impl AppWidget for Player {
 }
 
 pub trait Command: Send + Sync {
-  fn run(&self, mdp: &MediaPlayer);
+  fn run(&self, sink: &Sink);
 }
 
-pub struct Volume(i32);
+pub struct Volume(f32);
 
 impl Command for Volume {
-  fn run(&self, mdp: &MediaPlayer) {
-    mdp.set_volume(self.0).unwrap(); // TODO: print errors
+  fn run(&self, sink: &Sink) {
+    sink.set_volume(self.0);
   }
 }
 

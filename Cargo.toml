@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 crossterm = "0.23.0"
 home = "0.5.3"
+rand = "0.8.5"
+rodio = "0.15.0"
 tui = "0.17.0"
-vlc-rs = "0.3.0"
