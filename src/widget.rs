@@ -3,6 +3,6 @@ use tui::layout::Rect;
 use tui::terminal::Frame;
 
 pub trait AppWidget {
-  fn draw<T: Backend>(&self, f: &mut Frame<T>, area: Rect);
+  fn draw<T: Backend>(&mut self, f: &mut Frame<T>, area: Rect);
 }
 

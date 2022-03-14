@@ -2,11 +2,13 @@ use crate::AppWidget;
 
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
+use id3::{Tag, TagLike};
 use rand::thread_rng;
 use rand::seq::SliceRandom;
 use rodio::{OutputStream, Sink};
@@ -17,9 +19,11 @@ use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, Paragraph};
 
 pub struct Player {
-  tx:     Sender<Arc<dyn Command>>,
-  volume: f32,
-  stream: OutputStream,
+  tx_commands: Sender<Arc<dyn Command>>,
+  volume:      f32,
+  stream:      OutputStream,
+  rx_display:  Receiver<String>,
+  display:     String,
 }
 
 impl Player {
@@ -37,15 +41,38 @@ impl Player {
     }
     playlist.shuffle(&mut thread_rng());
 
-    let (tx, commands_rx) = channel::<Arc<dyn Command>>();
+    let (tx_commands, rx_commands) = channel::<Arc<dyn Command>>();
+    let (tx_display, rx_display) = channel::<String>();
+    let mut result = Self{
+      rx_display, tx_commands, stream,
+      volume:  1.0,
+      display: String::new(),
+    };
+
     thread::spawn(move || {
       let mut current = 0;
       loop {
         let file = &playlist[current];
+        let tag = Tag::read_from_path(file).unwrap();
+        let title = tag.title().unwrap_or("unknown");
+        let artist = tag.artist().unwrap_or("unknown");
+        let mut comments = String::new();
+        for com in tag.comments() {
+          if comments.is_empty() {
+            comments.push('(');
+          } else {
+            comments.push_str(", ");
+          }
+          comments.push_str(&com.to_string());
+        }
+        if !comments.is_empty() { comments.push(')'); }
+        tx_display.send(format!(
+            "{} - {} {}", title, artist, comments,
+        )).unwrap();
         let br = BufReader::new(File::open(file).unwrap());
         let sink = stream_handle.play_once(br).unwrap();
         loop {
-          if let Ok(command) = commands_rx.recv_timeout(
+          if let Ok(command) = rx_commands.recv_timeout(
             Duration::from_millis(200)
           ) {
             let song_control = command.run(&sink);
@@ -66,39 +93,43 @@ impl Player {
       }
     });
 
-    Self{
-      tx, stream,
-      volume: 1.0,
-    }
+    result
   }
 
   pub fn increase_volume(&mut self) {
     let new_volume = self.volume + 0.05;
     self.volume = if new_volume > 1.0 { 1.0 } else { new_volume };
-    self.tx.send(Arc::new(Volume(self.volume))).unwrap();
+    self.tx_commands.send(Arc::new(Volume(self.volume))).unwrap();
   }
 
   pub fn decrease_volume(&mut self) {
     let new_volume = self.volume - 0.05;
     self.volume = if new_volume < 0.0 { 0.0 } else { new_volume };
-    self.tx.send(Arc::new(Volume(self.volume))).unwrap();
+    self.tx_commands.send(Arc::new(Volume(self.volume))).unwrap();
   }
 
   pub fn next_song(&mut self) {
-    self.tx.send(Arc::new(SongControl(1))).unwrap();
+    self.tx_commands.send(Arc::new(SongControl(1))).unwrap();
   }
 
   pub fn previous_song(&mut self) {
-    self.tx.send(Arc::new(SongControl(-1))).unwrap();
+    self.tx_commands.send(Arc::new(SongControl(-1))).unwrap();
   }
 }
 
 impl AppWidget for Player {
-  fn draw<T: Backend>(&self, f: &mut Frame<T>, area: Rect) {
+  fn draw<T: Backend>(&mut self, f: &mut Frame<T>, area: Rect) {
+    if let Ok(display) = self.rx_display.try_recv() {
+      self.display = display;
+    }
     let block = Block::default()
       .borders(Borders::ALL)
       .title("player");
-    let text = format!("{}%", (self.volume*100.0).round() as u8);
+    let text = format!(
+      "{} | {}%",
+      self.display,
+      (self.volume*100.0).round() as u8,
+    );
     let widget = Paragraph::new(vec![Spans::from(vec![Span::raw(text)])])
         .block(block);
     f.render_widget(widget, area);

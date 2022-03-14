@@ -2,6 +2,7 @@ use crate::AppWidget;
 use crate::player::Player;
 
 use std::io;
+use std::time::Duration;
 use std::sync::{Arc, Mutex};
 
 use crossterm::event::{
@@ -64,22 +65,24 @@ impl App {
         state.player.draw(f, chunks[0]);
       })?;
 
-      match event::read()? {
-        Event::Key(event) => {
-          if let KeyCode::Char(c) = event.code {
-            match c {
-              'q' => { break }
-              'j' => { state.current_y += 1; }
-              'k' => { state.current_y -= 1; }
-              '-' => { state.player.decrease_volume(); }
-              '=' => { state.player.increase_volume(); }
-              '>' => { state.player.next_song(); }
-              '<' => { state.player.previous_song(); }
-              _ => {}
+      if let Ok(true) = event::poll(Duration::from_millis(200)) {
+        match event::read()? {
+          Event::Key(event) => {
+            if let KeyCode::Char(c) = event.code {
+              match c {
+                'q' => { break }
+                'j' => { state.current_y += 1; }
+                'k' => { state.current_y -= 1; }
+                '-' => { state.player.decrease_volume(); }
+                '=' => { state.player.increase_volume(); }
+                '>' => { state.player.next_song(); }
+                '<' => { state.player.previous_song(); }
+                _ => {}
+              }
             }
           }
+          _ => {}
         }
-        _ => {}
       }
     }
     Ok(())
