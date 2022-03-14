@@ -73,6 +73,8 @@ impl App {
               'k' => { state.current_y -= 1; }
               '-' => { state.player.decrease_volume(); }
               '=' => { state.player.increase_volume(); }
+              '>' => { state.player.next_song(); }
+              '<' => { state.player.previous_song(); }
               _ => {}
             }
           }

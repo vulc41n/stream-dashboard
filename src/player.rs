@@ -5,6 +5,7 @@ use std::io::BufReader;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
+use std::time::Duration;
 
 use rand::thread_rng;
 use rand::seq::SliceRandom;
@@ -44,7 +45,23 @@ impl Player {
         let br = BufReader::new(File::open(file).unwrap());
         let sink = stream_handle.play_once(br).unwrap();
         loop {
-          commands_rx.recv().unwrap().run(&sink);
+          if let Ok(command) = commands_rx.recv_timeout(
+            Duration::from_millis(200)
+          ) {
+            let song_control = command.run(&sink);
+            if song_control != 0 {
+              if song_control > 0 {
+                current += song_control as usize;
+              } else {
+                current -= song_control.abs() as usize;
+              }
+              break;
+            }
+          }
+          if sink.empty() {
+            current += 1;
+            break; // next song
+          }
         }
       }
     });
@@ -66,6 +83,14 @@ impl Player {
     self.volume = if new_volume < 0.0 { 0.0 } else { new_volume };
     self.tx.send(Arc::new(Volume(self.volume))).unwrap();
   }
+
+  pub fn next_song(&mut self) {
+    self.tx.send(Arc::new(SongControl(1))).unwrap();
+  }
+
+  pub fn previous_song(&mut self) {
+    self.tx.send(Arc::new(SongControl(-1))).unwrap();
+  }
 }
 
 impl AppWidget for Player {
@@ -81,15 +106,22 @@ impl AppWidget for Player {
 }
 
 pub trait Command: Send + Sync {
-  fn run(&self, sink: &Sink);
+  fn run(&self, sink: &Sink) -> i32;
 }
 
 pub struct Volume(f32);
 
 impl Command for Volume {
-  fn run(&self, sink: &Sink) {
+  fn run(&self, sink: &Sink) -> i32 {
     sink.set_volume(self.0);
+    0
   }
+}
+
+pub struct SongControl(i32);
+
+impl Command for SongControl {
+  fn run(&self, sink: &Sink) -> i32 { self.0 }
 }
 
 unsafe impl Send for Volume {}
