@@ -31,7 +31,7 @@ impl Player {
     let (stream, stream_handle) = OutputStream::try_default().unwrap();
     let mut playlist = Vec::new();
     let mut dirpath = home::home_dir().unwrap();
-    dirpath.push("music");
+    dirpath.push("tmp");
     for file in dirpath.read_dir().unwrap() {
       if let Ok(file) = file {
         if file.path().extension().unwrap() == "mp3" {
@@ -47,6 +47,10 @@ impl Player {
       let mut current = 0;
       let mut volume = 1.0;
       loop {
+        if current >= playlist.len() {
+          current = 0;
+          playlist.shuffle(&mut thread_rng());
+        }
         let file = &playlist[current];
         let tag = Tag::read_from_path(file).unwrap();
         let title = tag.title().unwrap_or("unknown");
