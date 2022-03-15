@@ -19,7 +19,7 @@ use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, Paragraph};
 
 pub struct Player {
-  tx_commands: Sender<Arc<dyn Command>>,
+  tx_commands: Sender<Command>,
   volume:      f32,
   stream:      OutputStream,
   rx_display:  Receiver<String>,
@@ -41,16 +41,11 @@ impl Player {
     }
     playlist.shuffle(&mut thread_rng());
 
-    let (tx_commands, rx_commands) = channel::<Arc<dyn Command>>();
+    let (tx_commands, rx_commands) = channel::<Command>();
     let (tx_display, rx_display) = channel::<String>();
-    let mut result = Self{
-      rx_display, tx_commands, stream,
-      volume:  1.0,
-      display: String::new(),
-    };
-
     thread::spawn(move || {
       let mut current = 0;
+      let mut volume = 1.0;
       loop {
         let file = &playlist[current];
         let tag = Tag::read_from_path(file).unwrap();
@@ -71,18 +66,33 @@ impl Player {
         )).unwrap();
         let br = BufReader::new(File::open(file).unwrap());
         let sink = stream_handle.play_once(br).unwrap();
+        sink.set_volume(volume);
         loop {
           if let Ok(command) = rx_commands.recv_timeout(
             Duration::from_millis(200)
           ) {
-            let song_control = command.run(&sink);
-            if song_control != 0 {
-              if song_control > 0 {
-                current += song_control as usize;
-              } else {
-                current -= song_control.abs() as usize;
+            match command {
+              Command::Volume(v) => {
+                volume = v;
+                sink.set_volume(v);
               }
-              break;
+              Command::SongControl(offset) => {
+                if offset != 0 {
+                  if offset > 0 {
+                    current += offset as usize;
+                  } else {
+                    current -= offset.abs() as usize;
+                  }
+                  break;
+                }
+              }
+              Command::TogglePause => {
+                if sink.is_paused () {
+                  sink.play();
+                } else {
+                  sink.pause();
+                }
+              }
             }
           }
           if sink.empty() {
@@ -93,27 +103,35 @@ impl Player {
       }
     });
 
-    result
+    Self{
+      rx_display, tx_commands, stream,
+      volume:  1.0,
+      display: String::new(),
+    }
   }
 
   pub fn increase_volume(&mut self) {
     let new_volume = self.volume + 0.05;
     self.volume = if new_volume > 1.0 { 1.0 } else { new_volume };
-    self.tx_commands.send(Arc::new(Volume(self.volume))).unwrap();
+    self.tx_commands.send(Command::Volume(self.volume)).unwrap();
   }
 
   pub fn decrease_volume(&mut self) {
     let new_volume = self.volume - 0.05;
     self.volume = if new_volume < 0.0 { 0.0 } else { new_volume };
-    self.tx_commands.send(Arc::new(Volume(self.volume))).unwrap();
+    self.tx_commands.send(Command::Volume(self.volume)).unwrap();
   }
 
   pub fn next_song(&mut self) {
-    self.tx_commands.send(Arc::new(SongControl(1))).unwrap();
+    self.tx_commands.send(Command::SongControl(1)).unwrap();
   }
 
   pub fn previous_song(&mut self) {
-    self.tx_commands.send(Arc::new(SongControl(-1))).unwrap();
+    self.tx_commands.send(Command::SongControl(-1)).unwrap();
+  }
+
+  pub fn toggle_pause(&mut self) {
+    self.tx_commands.send(Command::TogglePause).unwrap();
   }
 }
 
@@ -136,24 +154,11 @@ impl AppWidget for Player {
   }
 }
 
-pub trait Command: Send + Sync {
-  fn run(&self, sink: &Sink) -> i32;
+enum Command {
+  Volume(f32),
+  SongControl(i32),
+  TogglePause,
 }
 
-pub struct Volume(f32);
-
-impl Command for Volume {
-  fn run(&self, sink: &Sink) -> i32 {
-    sink.set_volume(self.0);
-    0
-  }
-}
-
-pub struct SongControl(i32);
-
-impl Command for SongControl {
-  fn run(&self, sink: &Sink) -> i32 { self.0 }
-}
-
-unsafe impl Send for Volume {}
-unsafe impl Sync for Volume {}
+unsafe impl Send for Command {}
+unsafe impl Sync for Command {}

@@ -77,6 +77,7 @@ impl App {
                 '=' => { state.player.increase_volume(); }
                 '>' => { state.player.next_song(); }
                 '<' => { state.player.previous_song(); }
+                ' ' => { state.player.toggle_pause(); }
                 _ => {}
               }
             }
