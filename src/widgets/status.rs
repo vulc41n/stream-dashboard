@@ -10,14 +10,14 @@ use tui::layout::Rect;
 use tui::widgets::{Block, Borders, Paragraph};
 use tui::text::{Spans, Span};
 use tui::backend::Backend;
-use tui::{Frame};
+use tui::Frame;
 
 use std::fs::read_to_string;
 use std::net::TcpStream;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use crate::widget::AppWidget;
+use super::AppWidget;
 
 pub struct StatusBar {
   status: Arc<RwLock<Status>>

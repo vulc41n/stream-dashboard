@@ -1,7 +1,6 @@
-pub struct Player {
-}
+pub struct Obs {}
 
-impl Player {
+impl Obs {
   pub fn new() -> Self {
     Self{}
   }

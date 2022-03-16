@@ -2,10 +2,10 @@ use std::io;
 
 mod app;
 use app::App;
+mod obs;
 mod player;
-mod status;
-mod widget;
-use widget::AppWidget;
+mod widgets;
+use widgets::AppWidget;
 
 fn main() -> Result<(), io::Error> {
   let mut app = App::new()?;
