@@ -31,7 +31,7 @@ impl Player {
     let (stream, stream_handle) = OutputStream::try_default().unwrap();
     let mut playlist = Vec::new();
     let mut dirpath = home::home_dir().unwrap();
-    dirpath.push("tmp");
+    dirpath.push("music");
     for file in dirpath.read_dir().unwrap() {
       if let Ok(file) = file {
         if file.path().extension().unwrap() == "mp3" {
@@ -40,12 +40,14 @@ impl Player {
       }
     }
     playlist.shuffle(&mut thread_rng());
+    let volume_widget = 0.1;
+    let volume_player = volume_widget;
 
     let (tx_commands, rx_commands) = channel::<Command>();
     let (tx_display, rx_display) = channel::<String>();
     thread::spawn(move || {
       let mut current = 0;
-      let mut volume = 1.0;
+      let mut volume = volume_player;
       loop {
         if current >= playlist.len() {
           current = 0;
@@ -66,7 +68,7 @@ impl Player {
         }
         if !comments.is_empty() { comments.push(')'); }
         tx_display.send(format!(
-            "{} - {} {}", title, artist, comments,
+          "{} - {} {}", title, artist, comments,
         )).unwrap();
         let br = BufReader::new(File::open(file).unwrap());
         let sink = stream_handle.play_once(br).unwrap();
@@ -109,7 +111,7 @@ impl Player {
 
     Self{
       rx_display, tx_commands, stream,
-      volume:  1.0,
+      volume:  volume_widget,
       display: String::new(),
     }
   }

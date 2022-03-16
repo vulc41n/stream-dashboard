@@ -1,5 +1,6 @@
 use crate::AppWidget;
 use crate::player::Player;
+use crate::status::StatusBar;
 
 use std::io;
 use std::time::Duration;
@@ -44,6 +45,7 @@ impl App {
         current_y: 1,
         // current_x: 1,
         player: Player::new(),
+        status: StatusBar::new(),
       })),
     })
   }
@@ -54,15 +56,13 @@ impl App {
       self.terminal.draw(|f| {
         let chunks = Layout::default()
           .direction(Direction::Vertical)
-          .margin(1)
           .constraints([
-            Constraint::Percentage(100),
-            // Constraint::Percentage(10),
-            // Constraint::Percentage(80),
-            // Constraint::Percentage(10)
+            Constraint::Ratio(1, 2),
+            Constraint::Ratio(1, 2),
           ].as_ref())
           .split(f.size());
-        state.player.draw(f, chunks[0]);
+        state.status.draw(f, chunks[0]);
+        state.player.draw(f, chunks[1]);
       })?;
 
       if let Ok(true) = event::poll(Duration::from_millis(200)) {
@@ -73,6 +73,8 @@ impl App {
                 'q' => { break }
                 'j' => { state.current_y += 1; }
                 'k' => { state.current_y -= 1; }
+                'h' => { /* state.current_x += 1; */ }
+                'l' => { /* state.current_x -= 1; */ }
                 '-' => { state.player.decrease_volume(); }
                 '=' => { state.player.increase_volume(); }
                 '>' => { state.player.next_song(); }
@@ -107,5 +109,6 @@ struct State {
   // pub current_x: u8,
   pub current_y: u8,
   pub player:    Player,
+  pub status:    StatusBar,
 }
 

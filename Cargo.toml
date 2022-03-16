@@ -4,9 +4,13 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+base64 = "0.13.0"
 crossterm = "0.23.0"
+embedded-websocket = "0.8.0"
 home = "0.5.3"
 id3 = "1.0.2"
 rand = "0.8.5"
 rodio = "0.15.0"
+serde_json = "1.0.79"
+sha2 = "0.10.2"
 tui = "0.17.0"
