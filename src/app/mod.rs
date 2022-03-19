@@ -11,7 +11,10 @@ use tui::backend::CrosstermBackend;
 
 use std::io;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::channel;
+use std::thread::spawn;
 
+use crate::player::{Command, Player};
 use crate::widgets::{AppWidget, Jukebox, StatusBar};
 
 mod events;
@@ -20,8 +23,11 @@ mod state;
 use state::State;
 
 pub struct App {
+  jukebox:  Jukebox,
+  player:   Arc<Mutex<Player>>,
+  state:    Arc<Mutex<State>>,
+  status:   StatusBar,
   terminal: Terminal<CrosstermBackend<io::Stdout>>,
-  state: Arc<Mutex<State>>,
 }
 
 impl App {
@@ -33,18 +39,34 @@ impl App {
     let backend = CrosstermBackend::new(stdout);
     let terminal = Terminal::new(backend)?;
 
+    // TODO: setup player
+    let mut dirpath = home::home_dir().unwrap();
+    dirpath.push("music");
+    let (tx_player, rx_player) = channel::<Command>();
+    let (tx_display, rx_display) = channel::<String>();
+
     Ok(Self{
-      terminal,
+      jukebox: Jukebox::new(rx_display),
+      player:  Arc::new(Mutex::new(
+        Player::new(dirpath, rx_player, tx_display, 0.1)
+      )),
       state:   Arc::new(Mutex::new(State{
         current_y: 1,
         // current_x: 1,
-        jukebox: Jukebox::new(),
-        status:  StatusBar::new(),
+        tx_player,
       })),
+      status:  StatusBar::new(),
+      terminal,
     })
   }
 
   pub fn run(&mut self) -> Result<(), io::Error> {
+    {
+      let player = self.player.clone();
+      spawn(move || {
+        player.lock().unwrap().run();
+      });
+    }
     loop {
       self.render()?;
       if self.handle_events()? {

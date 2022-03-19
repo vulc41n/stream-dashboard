@@ -3,6 +3,7 @@ use crossterm::event::{Event, poll, KeyCode, read};
 use std::io;
 use std::time::Duration;
 
+use crate::player::Command;
 use super::App;
 
 impl App {
@@ -18,11 +19,11 @@ impl App {
               'k' => { state.current_y -= 1; }
               'h' => { /* state.current_x += 1; */ }
               'l' => { /* state.current_x -= 1; */ }
-              '-' => { state.jukebox.decrease_volume(); }
-              '=' => { state.jukebox.increase_volume(); }
-              '>' => { state.jukebox.next_song(); }
-              '<' => { state.jukebox.previous_song(); }
-              ' ' => { state.jukebox.toggle_pause(); }
+              '-' => { state.tx_player.send(Command::Volume(-0.05)).unwrap(); }
+              '=' => { state.tx_player.send(Command::Volume(0.05)).unwrap(); }
+              '>' => { state.tx_player.send(Command::SongControl(1)).unwrap(); }
+              '<' => { state.tx_player.send(Command::SongControl(-1)).unwrap(); }
+              ' ' => { state.tx_player.send(Command::TogglePause).unwrap(); }
               _ => {}
             }
           }
