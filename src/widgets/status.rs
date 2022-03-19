@@ -17,6 +17,8 @@ use std::net::TcpStream;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+use crate::obs::Status;
+
 use super::AppWidget;
 
 pub struct StatusBar {
@@ -34,7 +36,7 @@ impl StatusBar {
         }
         thread::sleep(std::time::Duration::from_millis(500));
       };
-      *status.write().unwrap() = Status::Login;
+      *status.write().unwrap() = Status::Connecting;
       let mut read_buf    = [0; 4000];
       let mut write_buf   = [0; 4000];
       let mut frame_buf   = [0; 4000];
@@ -54,6 +56,7 @@ impl StatusBar {
         &mut client,
       );
       framer.connect(&mut stream, &websocket_options).unwrap();
+      *status.write().unwrap() = Status::Login;
       let message = "{\"message-id\":\"1\",\"request-type\":\"GetAuthRequired\"}";
       framer.write(
         &mut stream,
@@ -90,10 +93,10 @@ impl StatusBar {
         true,
         message.as_bytes(),
       ).unwrap();
-      while let Some(s) = framer.read_text(&mut stream, &mut frame_buf).unwrap() {
+      while let Some(_s) = framer.read_text(&mut stream, &mut frame_buf).unwrap() {
         framer.close(&mut stream, WebSocketCloseStatusCode::NormalClosure, None).unwrap();
       }
-      // client.
+      *status.write().unwrap() = Status::Idle;
     });
     Self{ status: self_status }
   }
@@ -116,27 +119,3 @@ impl AppWidget for StatusBar {
   }
 }
 
-enum Status {
-  Offline,
-  Connecting,
-  Login,
-  Idle,
-}
-
-fn create_auth_response(challenge: &str, salt: &str, password: &str) -> String {
-  let mut hasher = Sha256::new();
-  hasher.update(password.as_bytes());
-  hasher.update(salt.as_bytes());
-
-  let mut auth = String::with_capacity(Sha256::output_size() * 4 / 3 + 4);
-
-  base64::encode_config_buf(hasher.finalize_reset(), base64::STANDARD, &mut auth);
-
-  hasher.update(auth.as_bytes());
-  hasher.update(challenge.as_bytes());
-  auth.clear();
-
-  base64::encode_config_buf(hasher.finalize(), base64::STANDARD, &mut auth);
-
-  auth
-}
