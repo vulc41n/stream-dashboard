@@ -4,9 +4,8 @@ use tui::terminal::Frame;
 use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, Paragraph};
 
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::Receiver;
 
-use crate::player::Command;
 use super::AppWidget;
 
 pub struct Jukebox {

@@ -1,50 +1,64 @@
 use sha2::{Digest, Sha256};
 use embedded_websocket::{
   Client,
-  WebSocketCloseStatusCode,
   WebSocketSendMessageType,
   WebSocketClient,
   WebSocketOptions,
 };
 use embedded_websocket::framer::Framer;
 use rand::rngs::ThreadRng;
-use tui::layout::Rect;
-use tui::widgets::{Block, Borders, Paragraph};
-use tui::text::{Spans, Span};
-use tui::backend::Backend;
-use tui::Frame;
+use serde_json::Value;
 
 use std::fs::read_to_string;
 use std::net::TcpStream;
-use std::sync::{Arc, RwLock};
+use std::sync::mpsc::Sender;
 use std::thread;
 
 pub struct Obs {
-  client:      WebSocketClient<ThreadRng>,
-  message_id:  u64,
-  read_buf:    [u8; 4000],
-  write_buf:   [u8; 4000],
-  read_cursor: usize,
+  message_id: u64,
+  tx:         Sender<Status>,
 }
 
 impl Obs {
-  pub fn new() -> Self {
-    Self{
-      client:      WebSocketClient::new_client(rand::thread_rng()),
-      message_id:  1,
-      read_buf:    [0; 4000],
-      write_buf:   [0; 4000],
-      read_cursor: 0,
-    }
+  pub fn new(tx: Sender<Status>) -> Self {
+    Self{ message_id:  1, tx }
   }
 
   pub fn run(&mut self) {
-    self.connect();
-    self.write("GetAuthRequired", "");
-    todo!();
+    let mut frame_buf   = [0; 4096];
+    let mut read_buf    = [0; 4096];
+    let mut write_buf   = [0; 4096];
+    let mut read_cursor = 0;
+    let mut client      = WebSocketClient::new_client(rand::thread_rng());
+    let mut connection = self.connect(
+      &mut read_buf,
+      &mut read_cursor,
+      &mut write_buf,
+      &mut client,
+    );
+    self.tx.send(Status::Login).unwrap();
+    self.write(&mut connection, "GetAuthRequired", "");
+    let get_auth_required = self.read(&mut connection, &mut frame_buf);
+    let password = Self::get_password(
+      get_auth_required["challenge"].as_str().unwrap(),
+      get_auth_required["salt"].as_str().unwrap(),
+    );
+    self.write(
+      &mut connection, "Authenticate", &format!("\"auth\":\"{}\"", password),
+    );
+    let _response = self.read(&mut connection, &mut frame_buf);
+    // println!("{}", response);
+    self.tx.send(Status::Idle).unwrap();
+    // TODO:
   }
 
-  pub fn connect(&mut self) -> Framer<ThreadRng, Client> {
+  pub fn connect<'a>(
+    &self,
+    read_buf:    &'a mut [u8; 4096],
+    read_cursor: &'a mut usize,
+    write_buf:   &'a mut [u8; 4096],
+    client:      &'a mut WebSocketClient<ThreadRng>,
+  ) -> Connection<'a> {
     let mut stream = loop {
       if let Ok(stream) = TcpStream::connect("localhost:4444") {
         break stream;
@@ -59,19 +73,44 @@ impl Obs {
       sub_protocols: None,
       additional_headers: None,
     };
-    let mut framer = Framer::new(
-      &mut self.read_buf,
-      &mut self.read_cursor,
-      &mut self.write_buf,
-      &mut self.client,
-    );
+    let mut framer = Framer::new(read_buf, read_cursor, write_buf, client);
     framer.connect(&mut stream, &websocket_options).unwrap();
-    framer
+    (framer, stream)
   }
 
-  pub fn write(&mut self, type_: &str, msg: &str) {
+  pub fn write(
+    &mut self,
+    connection: &mut Connection,
+    type_: &str,
+    msg: &str,
+  ) {
     let full_msg = self.get_full_msg(type_, msg);
-    todo!();
+    let (framer, stream) = connection;
+    framer.write(
+      stream,
+      WebSocketSendMessageType::Text,
+      true,
+      full_msg.as_bytes(),
+    ).unwrap();
+  }
+
+  pub fn read(
+    &self,
+    connection: &mut Connection,
+    buf: &mut [u8;4096],
+  ) -> Value {
+    let (framer, stream) = connection;
+    let mut msg = String::new();
+    loop {
+      if let Some(s) = framer.read_text(stream, buf).unwrap() {
+        msg.push_str(s);
+        if let Ok(result) = serde_json::from_str(&msg) {
+          break result;
+        }
+      } else {
+        panic!("prematory end");
+      }
+    }
   }
 
   fn get_full_msg(&mut self, type_: &str, msg: &str) -> String {
@@ -88,14 +127,21 @@ impl Obs {
     result
   }
 
-  fn create_auth_response(challenge: &str, salt: &str, password: &str) -> String {
+  fn get_password(
+    challenge: &str,
+    salt: &str,
+  ) -> String {
+    let mut password = read_to_string("password").unwrap();
+    password = password.trim().to_string();
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
     hasher.update(salt.as_bytes());
 
     let mut auth = String::with_capacity(Sha256::output_size() * 4 / 3 + 4);
 
-    base64::encode_config_buf(hasher.finalize_reset(), base64::STANDARD, &mut auth);
+    base64::encode_config_buf(
+      hasher.finalize_reset(), base64::STANDARD, &mut auth,
+    );
 
     hasher.update(auth.as_bytes());
     hasher.update(challenge.as_bytes());
@@ -109,7 +155,8 @@ impl Obs {
 
 pub enum Status {
   Offline,
-  Connecting,
   Login,
   Idle,
 }
+
+type Connection<'a> = (Framer<'a, ThreadRng, Client>, TcpStream);

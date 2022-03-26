@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
 
-use crate::player::{Command, Player};
+use crate::player::Command;
 
 pub struct State {
   // pub current_x: u8,

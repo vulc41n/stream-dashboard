@@ -14,8 +14,9 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::channel;
 use std::thread::spawn;
 
+use crate::obs::{Obs, Status};
 use crate::player::{Command, Player};
-use crate::widgets::{AppWidget, Jukebox, StatusBar};
+use crate::widgets::{Jukebox, StatusBar};
 
 mod events;
 mod render;
@@ -24,6 +25,7 @@ use state::State;
 
 pub struct App {
   jukebox:  Jukebox,
+  obs:      Arc<Mutex<Obs>>,
   player:   Arc<Mutex<Player>>,
   state:    Arc<Mutex<State>>,
   status:   StatusBar,
@@ -43,19 +45,23 @@ impl App {
     let mut dirpath = home::home_dir().unwrap();
     dirpath.push("music");
     let (tx_player, rx_player) = channel::<Command>();
-    let (tx_display, rx_display) = channel::<String>();
+    let (tx_jukebox, rx_jukebox) = channel::<String>();
+    let (tx_obs, rx_obs) = channel::<Status>();
 
     Ok(Self{
-      jukebox: Jukebox::new(rx_display),
+      jukebox: Jukebox::new(rx_jukebox),
+      obs:     Arc::new(Mutex::new(
+        Obs::new(tx_obs),
+      )),
       player:  Arc::new(Mutex::new(
-        Player::new(dirpath, rx_player, tx_display, 0.1)
+        Player::new(dirpath, rx_player, tx_jukebox, 0.1)
       )),
       state:   Arc::new(Mutex::new(State{
         current_y: 1,
         // current_x: 1,
         tx_player,
       })),
-      status:  StatusBar::new(),
+      status:  StatusBar::new(rx_obs),
       terminal,
     })
   }
@@ -65,6 +71,12 @@ impl App {
       let player = self.player.clone();
       spawn(move || {
         player.lock().unwrap().run();
+      });
+    }
+    {
+      let obs = self.obs.clone();
+      spawn(move || {
+        obs.lock().unwrap().run();
       });
     }
     loop {
